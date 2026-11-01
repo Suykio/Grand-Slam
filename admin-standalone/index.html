@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>Admin · Diamante Vivo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow">
+<style>
+body{font:15px system-ui,sans-serif;background:#02189e;color:#fff;max-width:760px;margin:0 auto;padding:20px}
+input,select,button{font:inherit;padding:8px 10px;border-radius:10px;border:1px solid #fff5;background:#fff1;color:#fff}
+select option{color:#000}button{background:#fecb02;color:#02189e;font-weight:700;cursor:pointer;border:0}
+.g{display:grid;grid-template-columns:1fr 70px 70px 120px auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #fff3}
+#msg{color:#fecb02;margin:10px 0}[hidden]{display:none}
+</style></head><body>
+<h1>Panel de administración</h1><p id="msg"></p>
+<form id="login"><input id="em" type="email" placeholder="Correo" required> <input id="pw" type="password" placeholder="Contraseña" required> <button>Entrar</button></form>
+<section id="app" hidden><select id="rd"></select><button id="out" style="margin-left:8px">Salir</button><div id="list"></div></section>
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
+// Rellena con los datos de tu proyecto Supabase (la anon key es pública; la seguridad la da RLS).
+const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co', SUPABASE_ANON_KEY = 'TU_ANON_KEY';
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY), $ = s => document.querySelector(s);
+const msg = t => $('#msg').textContent = t;
+const names = ['Jornada 1','Jornada 2','Jornada 3','Jornada 4','Jornada 5','Jornada 6','Jornada 7','Jornada 8','Jornada 9','Jornada 10','Semifinal','Final'];
+$('#rd').innerHTML = names.map((n, i) => `<option value="${i}">${n}</option>`).join('');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function load() {
+  const { data, error } = await sb.from('games').select('*, home:teams!games_home_id_fkey(abbr), away:teams!games_away_id_fkey(abbr)').eq('round_idx', +$('#rd').value).order('slot');
+  if (error) return msg(error.message);
+  $('#list').innerHTML = (data || []).map(g => `<div class="g" data-id="${g.id}"><b>${esc(g.away.abbr)} @ ${esc(g.home.abbr)}</b>
+    <input type="number" min="0" value="${g.away_score}" data-f="away_score"><input type="number" min="0" value="${g.home_score}" data-f="home_score">
+    <select data-f="status">${['prog','live','fin'].map(s => `<option ${s === g.status ? 'selected' : ''}>${s}</option>`).join('')}</select><button>Guardar</button></div>`).join('') || '<p>Sin juegos.</p>';
+}
+$('#list').onclick = async e => {
+  if (e.target.tagName !== 'BUTTON') return;
+  const row = e.target.closest('.g'), upd = {};
+  row.querySelectorAll('[data-f]').forEach(i => upd[i.dataset.f] = i.type === 'number' ? +i.value : i.value);
+  const { error } = await sb.from('games').update(upd).eq('id', row.dataset.id);
+  msg(error ? error.message : 'Guardado ✔');
+};
+$('#rd').onchange = load;
+$('#login').onsubmit = async e => { e.preventDefault();
+  const { error } = await sb.auth.signInWithPassword({ email: $('#em').value, password: $('#pw').value });
+  if (error) return msg(error.message); show(true); };
+$('#out').onclick = async () => { await sb.auth.signOut(); show(false); };
+function show(on) { $('#login').hidden = on; $('#app').hidden = !on; msg(''); if (on) load(); }
+sb.auth.getSession().then(({ data }) => show(!!data.session));
+</script></body></html>
